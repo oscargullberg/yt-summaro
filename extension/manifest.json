@@ -1,0 +1,77 @@
+{
+  "manifest_version": 3,
+  "name": "YT Summaro",
+  "version": "0.4.8",
+  "description": "Summarize YouTube with your ChatGPT plan and transcribe videos without captions on your device.",
+  "minimum_chrome_version": "117",
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "activeTab",
+    "scripting",
+    "offscreen",
+    "declarativeNetRequestWithHostAccess",
+    "tabCapture"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "https://www.youtube.com/*",
+    "https://*.googlevideo.com/*",
+    "https://auth.openai.com/*",
+    "https://api.openai.com/*",
+    "https://huggingface.co/*",
+    "https://*.huggingface.co/*",
+    "https://*.hf.co/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; connect-src 'self' https://www.youtube.com https://googlevideo.com https://*.googlevideo.com https://auth.openai.com https://api.openai.com https://huggingface.co https://*.huggingface.co https://*.hf.co"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "plan-callback.html"
+      ],
+      "matches": [
+        "http://127.0.0.1/*",
+        "https://auth.openai.com/*"
+      ]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Summarize this video",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}

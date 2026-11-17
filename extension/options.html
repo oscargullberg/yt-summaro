@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>YT Summaro settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <img class="hero-mark" src="icons/icon128.png" width="48" height="48" alt="" />
+        <div>
+          <h1>YT Summaro</h1>
+          <p class="subtitle">
+            Settings for YouTube summaries and on-device transcription.
+          </p>
+        </div>
+        <span class="version" id="extension-version"></span>
+      </header>
+
+      <section class="card" aria-labelledby="plan-title">
+        <div class="card-head">
+          <div>
+            <h2 id="plan-title">ChatGPT plan</h2>
+            <p class="hint">OpenAI receives the transcript, video title, and channel when you request a summary.</p>
+          </div>
+          <span id="plan-status" class="pill" data-state="loading" role="status">Checking connection…</span>
+        </div>
+        <label class="check">
+          <input id="plan-remember" type="checkbox" aria-labelledby="plan-remember-label" aria-describedby="plan-remember-hint" checked />
+          <span>
+            <strong id="plan-remember-label">Stay signed in on this device</strong>
+            <small id="plan-remember-hint">Your refresh token is encrypted in this Chrome profile and stays on this device.</small>
+          </span>
+        </label>
+        <div class="card-actions">
+          <button id="plan-connect" class="button primary" type="button" disabled>Continue with ChatGPT</button>
+          <button id="plan-disconnect" class="button" type="button" disabled hidden>Disconnect</button>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="summary-title">
+        <div class="card-head">
+          <div>
+            <h2 id="summary-title">Summary defaults</h2>
+            <p class="hint">The card on YouTube starts with these values. You can change them per video.</p>
+          </div>
+        </div>
+        <div class="fields defaults-fields">
+          <label class="field">
+            <span>Model</span>
+            <select id="model"></select>
+          </label>
+          <label class="field">
+            <span>Style</span>
+            <select id="style">
+              <option value="brief">Brief</option>
+              <option value="standard">Standard</option>
+              <option value="detailed">Detailed</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Language</span>
+            <select id="language">
+              <option value="en">English</option>
+              <option value="auto">Video language</option>
+              <option value="system">Browser language</option>
+            </select>
+          </label>
+        </div>
+        <div class="card-actions">
+          <button id="save-settings" class="button primary" type="button">Save summary defaults</button>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="local-asr-title">
+        <div class="card-head">
+          <div>
+            <h2 id="local-asr-title">Local Whisper</h2>
+            <p class="hint">
+              Transcribe videos with missing captions on this device. If YouTube’s audio download fails, use the YT Summaro toolbar icon to transcribe during playback.
+            </p>
+          </div>
+          <div id="local-asr-status" class="pill" data-state="loading">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="local-asr-state">Checking…</span>
+          </div>
+        </div>
+        <label class="check">
+          <input id="local-asr-enabled" type="checkbox" aria-labelledby="local-asr-enabled-label" aria-describedby="local-asr-enabled-hint" />
+          <span>
+            <strong id="local-asr-enabled-label">Transcribe audio when captions are missing</strong>
+            <small id="local-asr-enabled-hint">Audio stays in Chrome. The first transcription downloads the selected model from Hugging Face.</small>
+          </span>
+        </label>
+        <div class="fields">
+          <label class="field">
+            <span>Whisper model</span>
+            <select id="local-asr-model">
+              <option value="tiny">Tiny — fastest, lowest accuracy (~40–80 MB)</option>
+              <option value="base">Base — recommended (~80–150 MB)</option>
+              <option value="small">Small — slower, more accurate (~250–500 MB)</option>
+            </select>
+          </label>
+        </div>
+        <div class="card-actions">
+          <button id="save-local-asr" class="button primary" type="button">Save Whisper settings</button>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="storage-title">
+        <div class="card-head">
+          <div>
+            <h2 id="storage-title">Local storage</h2>
+            <p class="hint">Manage the summaries, transcripts, and model files saved in this Chrome profile.</p>
+          </div>
+        </div>
+        <p id="local-asr-info" class="hint">Checking model cache…</p>
+        <div class="card-actions">
+          <button id="clear-summaries" class="button danger" type="button">Clear saved summaries</button>
+          <button id="clear-local-asr" class="button danger" type="button">Clear Whisper model and transcripts</button>
+        </div>
+      </section>
+      <div id="toast" class="toast" role="status" hidden></div>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
