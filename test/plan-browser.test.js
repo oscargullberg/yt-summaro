@@ -131,7 +131,7 @@ test("writes browser-language summaries in Chrome's UI language", async () => {
   }
 });
 
-test("opens and reads the modern transcript panel before trying audio", async () => {
+test.each(["panel target", "nested target", "segments only"])("opens and reads the modern transcript panel with %s before trying audio", async (layout) => {
   const { readYouTubeCaptions } = await import("../extension/plan-captions.js");
   const videoId = "abcdefghijk";
   let expanded = false;
@@ -154,9 +154,26 @@ test("opens and reads the modern transcript panel before trying audio", async ()
     }
   };
   const panel = {
-    getAttribute: () => panelOpen ? "ENGAGEMENT_PANEL_VISIBILITY_EXPANDED" : null,
-    querySelector: (selector) => selector.includes("Close") ? close : null,
+    getAttribute(name) {
+      if (name === "visibility") return panelOpen ? "ENGAGEMENT_PANEL_VISIBILITY_EXPANDED" : null;
+      if (name === "target-id" && layout === "panel target") return "PAmodern_transcript_view";
+      return null;
+    },
+    querySelector(selector) {
+      if (selector.includes("Close")) return close;
+      if (layout === "nested target" && selector.includes('[data-target-id="PAmodern_transcript_view"]')) return {};
+      if (layout === "segments only" && selector.includes("transcript-segment-view-model")) return cue;
+      return null;
+    },
     querySelectorAll: (selector) => selector.includes("transcript-segment-view-model") && ++postOpenReads > 1 ? [cue] : []
+  };
+  const unrelatedPanel = {
+    getAttribute: (name) => name === "visibility" ? "ENGAGEMENT_PANEL_VISIBILITY_EXPANDED" : "engagement-panel-comments-section",
+    querySelector: () => null
+  };
+  const hiddenPanel = {
+    getAttribute: (name) => name === "visibility" ? "ENGAGEMENT_PANEL_VISIBILITY_HIDDEN" : "PAmodern_transcript_view",
+    querySelectorAll() { throw new Error("Must not read a hidden transcript panel"); }
   };
   const watch = {
     isConnected: true,
@@ -165,7 +182,11 @@ test("opens and reads the modern transcript panel before trying audio", async ()
       if (selector.includes("text-inline-expander")) return description;
       if (selector.includes("transcript-section-renderer")) return expanded ? opener : null;
     },
-    querySelectorAll: () => [panel]
+    querySelectorAll(selector) {
+      const panels = [unrelatedPanel, hiddenPanel, panel];
+      if (selector === "ytd-engagement-panel-section-list-renderer") return panels;
+      return panels.filter((item) => selector.includes(`[target-id="${item.getAttribute("target-id")}"]`));
+    }
   };
   const sandbox = {
     location: new URL(`https://www.youtube.com/watch?v=${videoId}`),

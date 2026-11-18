@@ -11,14 +11,121 @@ export async function readYouTubeCaptions(videoId) {
   const onVideo = () => new URLSearchParams(location.search).get("v") === videoId;
   const watch = document.querySelector("ytd-watch-flexy");
   const ownsWatch = () => onVideo() && watch?.isConnected && watch.getAttribute("video-id") === videoId;
-  const panelSelector = [
-    'ytd-engagement-panel-section-list-renderer[target-id="PAmodern_transcript_view"]',
-    'ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-searchable-transcript"]'
-  ].join(",");
+
+  async function readBody(result) {
+    if (!result.ok || Number(result.headers.get("content-length")) > 4_000_000) throw new Error("Unreadable caption response");
+    const reader = result.body?.getReader();
+    if (!reader) throw new Error("Empty caption response");
+    const decode = new TextDecoder();
+    let body = "", bytes = 0;
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > 4_000_000) throw new Error("Caption response too large");
+        body += decode.decode(value, { stream: true });
+      }
+      return body + decode.decode();
+    } finally { void reader.cancel().catch(() => {}); }
+  }
+
+  function* objects(root) {
+    const pending = [root], seen = new WeakSet();
+    for (let i = 0; i < pending.length; i++) {
+      if (i >= 100_000) throw new Error("Transcript data too complex");
+      const node = pending[i];
+      if (!node || typeof node !== "object" || seen.has(node)) continue;
+      seen.add(node);
+      yield node;
+      for (const value of Object.values(node)) {
+        if (value && typeof value === "object") pending.push(value);
+      }
+    }
+  }
+
+  function transcriptParams(data) {
+    // Search only the current video's panels, never commands for recommended videos.
+    for (const node of objects(data?.engagementPanels)) {
+      const params = node.getTranscriptEndpoint?.params;
+      if (typeof params === "string" && params.length > 0 && params.length <= 16_384) return params;
+    }
+    return null;
+  }
+
+  function structuredBody(data) {
+    if (data?.error) return null;
+    const events = [], seen = new Set();
+    const textOf = (value) => typeof value === "string" ? value :
+      typeof value?.simpleText === "string" ? value.simpleText :
+      typeof value?.content === "string" ? value.content :
+      Array.isArray(value?.runs) ? value.runs.map((run) => typeof run?.text === "string" ? run.text : "").join("") : "";
+    for (const node of objects(data)) {
+      const list = node.transcriptSegmentListRenderer;
+      // A paginated response must not become a successful but incomplete transcript.
+      if (list?.continuations?.length || list?.initialSegments?.some((item) => item?.continuationItemRenderer)) return null;
+      const segment = node.transcriptSegmentRenderer || node.transcriptSegmentViewModel;
+      if (!segment || !/^(?:\d+)(?:\.\d+)?$/.test(String(segment.startMs ?? ""))) continue;
+      const start = Number(segment.startMs);
+      const text = textOf(segment.snippet || segment.text).replace(/\s+/g, " ").trim().slice(0, 2000);
+      if (!Number.isFinite(start) || !text) continue;
+      const key = `${start}\n${text}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      events.push({ tStartMs: start, segs: [{ utf8: text }] });
+      if (events.length > 20_000) throw new Error("Too many transcript segments");
+    }
+    if (!events.length) return null;
+    const body = JSON.stringify({ events });
+    if (body.length > 4_000_000) throw new Error("Transcript response too large");
+    return body;
+  }
+
+  async function readStructuredTranscript() {
+    try {
+      if (!ownsWatch()) return null;
+      const config = (name) => typeof window.ytcfg?.get === "function" ? window.ytcfg.get(name) : undefined;
+      const context = config("INNERTUBE_CONTEXT");
+      if (!context?.client?.clientVersion || !context.client.clientName) return null;
+      // Share one deadline across discovery and retrieval; never invent client versions or params.
+      const signal = AbortSignal.timeout(5000);
+      const post = async (endpoint, fields) => {
+        if (!ownsWatch()) throw new Error("Video changed");
+        const url = new URL(`/youtubei/v1/${endpoint}?prettyPrint=false`, location.origin);
+        const apiKey = config("INNERTUBE_API_KEY");
+        if (typeof apiKey === "string" && apiKey.length <= 256) url.searchParams.set("key", apiKey);
+        const result = await fetch(url, {
+          method: "POST", credentials: "same-origin", redirect: "error", cache: "no-store", signal,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ context, ...fields })
+        });
+        const body = await readBody(result);
+        if (!ownsWatch()) throw new Error("Video changed");
+        return JSON.parse(body.replace(/^\)\]\}'\s*/, ""));
+      };
+      const currentId = (data) => data?.currentVideoEndpoint?.watchEndpoint?.videoId;
+      // ytInitialData can still describe the previous video after YouTube SPA navigation.
+      let data = [watch.data, window.ytInitialData].find((item) => currentId(item) === videoId);
+      if (!data) data = await post("next", { videoId });
+      if (currentId(data) && currentId(data) !== videoId) return null;
+      const params = transcriptParams(data);
+      if (!params) return null;
+      const transcript = await post("get_transcript", { params });
+      if (currentId(transcript) && currentId(transcript) !== videoId) return null;
+      return structuredBody(transcript);
+    } catch { return null; /* The native panel can succeed when a direct request is rejected. */ }
+  }
+
+  const transcriptTargets = ["PAmodern_transcript_view", "engagement-panel-searchable-transcript"];
   const expanded = "ENGAGEMENT_PANEL_VISIBILITY_EXPANDED";
   const segmentSelector = "transcript-segment-view-model, ytd-transcript-segment-renderer";
-  const findPanel = () => Array.from(watch?.querySelectorAll(panelSelector) || [])
-    .find((panel) => panel.getAttribute("visibility") === expanded);
+  // YouTube also puts the transcript target on a nested renderer, leaving the panel unlabelled.
+  const transcriptContentSelector = transcriptTargets.map((target) => `[data-target-id="${target}"]`).join(", ");
+  const findPanel = () => Array.from(watch?.querySelectorAll("ytd-engagement-panel-section-list-renderer") || [])
+    .find((panel) => panel.getAttribute("visibility") === expanded && (
+      transcriptTargets.includes(panel.getAttribute("target-id")) ||
+      panel.querySelector(transcriptContentSelector) || panel.querySelector(segmentSelector)
+    ));
   const readPanel = (panel) => {
     if (!panel || !ownsWatch()) return [];
     return Array.from(panel.querySelectorAll(segmentSelector)).slice(0, 20_000).map((node) => ({
@@ -77,8 +184,12 @@ export async function readYouTubeCaptions(videoId) {
   candidates.sort((a, b) => Number(a.kind === "asr") - Number(b.kind === "asr"));
   const meta = { videoId, title, channel: String(details?.author || "").slice(0, 200), duration: Number(details?.lengthSeconds) || 0, isLive: Boolean(details?.isLive) };
 
+  const structured = await readStructuredTranscript();
+  if (!onVideo()) return null;
+  if (structured) return { ...meta, body: structured };
+
   // Use the player's own transcript UI when it offers one, including videos with the CC control disabled.
-  const native = await readNativeTranscript();
+  const native = await readNativeTranscript().catch(() => []);
   if (!onVideo()) return null;
   if (native.length) return { ...meta, visible: native };
 
@@ -88,22 +199,7 @@ export async function readYouTubeCaptions(videoId) {
       if (url.origin !== location.origin || url.pathname !== "/api/timedtext" || url.searchParams.get("v") !== videoId) continue;
       url.searchParams.set("fmt", "json3");
       const captions = await fetch(url, { signal: AbortSignal.timeout(5000), redirect: "error", credentials: "same-origin" });
-      if (!captions.ok) continue;
-      const reader = captions.body?.getReader();
-      if (!reader) continue;
-      let body = "";
-      let bytes = 0;
-      const decode = new TextDecoder();
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          bytes += value.byteLength;
-          if (bytes > 4_000_000) throw new Error("Caption response too large");
-          body += decode.decode(value, { stream: true });
-        }
-        body += decode.decode();
-      } finally { void reader.cancel().catch(() => {}); }
+      const body = await readBody(captions);
       if (!/^\s*(?:\{|<\?xml|<transcript|<timedtext)/i.test(body)) continue;
       if (body.trimStart().startsWith("{") && !JSON.parse(body)?.events?.some((event) => event?.segs?.some((segment) => segment?.utf8?.trim()))) continue;
       if (!onVideo()) return null;

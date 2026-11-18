@@ -14,7 +14,7 @@ Click a timestamp to seek to the cited moment. YT Summaro saves the latest succe
 
 ## When captions are missing
 
-YT Summaro tries YouTube’s transcript panel and caption tracks first. With **Local Whisper** enabled, it reuses a saved transcript or tries to download the audio. The video can stay paused during a download.
+YT Summaro first requests structured transcript data using the current YouTube session, then tries YouTube’s transcript panel and caption tracks. With **Local Whisper** enabled, it reuses a saved transcript or tries to download the audio. The video can stay paused during a download.
 
 If YouTube won’t serve the audio, click the **YT Summaro toolbar icon** on the video tab. Keep the video unmuted. Chrome records the tab’s audio as the video plays from the beginning at normal speed. This takes at least the video’s runtime.
 
